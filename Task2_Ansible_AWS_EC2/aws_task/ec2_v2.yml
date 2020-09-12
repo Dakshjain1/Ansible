@@ -1,0 +1,95 @@
+- hosts: localhost
+  gather_facts: no
+  vars_files:
+          - mycred.yml
+
+  vars:
+          myport: 81
+          region: ap-south-1
+          subnet: subnet-c48ee588
+          sg: websg
+          type: t2.micro
+          number: 1
+
+  tasks:
+
+          - name: installing python
+            package:
+                    name: python36
+                    state: present
+
+          - name: installing boto3
+            pip:
+                    name: boto3
+                    state: present
+
+          - name: create security group
+            ec2_group:
+                    name: "{{ sg }}"
+                    description: The webservers security group
+                    region: "{{ region }}"
+                    aws_access_key: "{{ access_key }}"
+                    aws_secret_key: "{{ secret_key }}"
+                    rules:
+                            - proto: tcp
+                              from_port: 22
+                              to_port: 22
+                              cidr_ip: 0.0.0.0/0
+                            - proto: tcp
+                              from_port: "{{ myport }}"
+                              to_port: "{{ myport }}"
+                              cidr_ip: 0.0.0.0/0
+                            - proto: icmp
+                              from_port: -1
+                              to_port: -1
+                              cidr_ip: 0.0.0.0/0
+                    rules_egress:
+                            - proto: all
+                              cidr_ip: 0.0.0.0/0
+          
+          - name: launching ec2 instance
+            ec2:
+                    key_name: key1
+                    instance_type: "{{ type }}"
+                    image: ami-0ebc1ac48dfd14136
+                    wait: true
+                    group: "{{ sg }}"
+                    count: "{{ number }}"
+                    vpc_subnet_id: "{{ subnet }}"
+                    assign_public_ip: yes
+                    region: "{{ region }}"
+                    state: present
+                    aws_access_key: "{{ access_key }}"
+                    aws_secret_key: "{{ secret_key }}"
+                    instance_tags:
+                            Name: webserver
+            register: ec2
+
+          - name: Add new instance to host group
+            add_host: 
+                    hostname: "{{ item.public_ip }}"
+                    groupname: webserver
+            loop: "{{ ec2.instances }}"
+
+          - name: Wait for SSH to come up
+            wait_for: 
+                    host: "{{ item.public_dns_name }}" 
+                    port: 22  
+                    state: started
+            loop: "{{ ec2.instances }}"
+
+
+- hosts: webserver
+  gather_facts: no
+  tasks:
+          - command: curl http://ipv4.icanhazip.com
+            register: x
+          - debug:
+                  var:  x.stdout
+        
+          - name: Pass variables to role
+            include_role:
+                    name: httpdserver
+            vars:
+                    my_ip: x.stdout
+

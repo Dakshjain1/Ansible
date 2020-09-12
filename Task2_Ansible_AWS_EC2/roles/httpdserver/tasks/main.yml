@@ -1,0 +1,32 @@
+---
+# tasks file for httpdserver
+
+- name: install httpd
+  package: 
+        name: httpd
+        state: present
+  register: status
+
+- name: install php
+  package:
+          name: php
+          state: present
+
+- name: configure httpd
+  template:
+          src: my.conf
+          dest: /etc/httpd/conf.d/my.conf
+  when: status.rc == 0
+  notify: restart httpd
+
+- name: copy code
+  get_url:
+          url: https://raw.githubusercontent.com/Dakshjain1/php-cloud/master/index.php
+          dest: "{{ my_path }}index.php" 
+
+- name: start httpd
+  service:
+          name: httpd
+          state: started
+  when: status.rc == 0
+
