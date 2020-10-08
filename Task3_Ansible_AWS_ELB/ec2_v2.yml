@@ -1,0 +1,171 @@
+- hosts: localhost
+  gather_facts: no
+  vars_files:
+          - mycred.yml
+
+  vars:
+          myport: 81
+          region: ap-south-1
+          subnet:
+                  - subnet-c48ee588
+                  - subnet-ca87bda2
+                
+          sg: websg
+          type: t2.micro
+          number: 1
+          key: key1
+          id: []
+          ip: []
+
+  tasks:
+
+          - name: installing python
+            package:
+                    name: python36
+                    state: present
+
+          - name: installing boto3
+            pip:
+                    name: boto3
+                    state: present
+
+          - name: create security group
+            ec2_group:
+                    name: "{{ sg }}"
+                    description: The webservers security group
+                    region: "{{ region }}"
+                    aws_access_key: "{{ access_key }}"
+                    aws_secret_key: "{{ secret_key }}"
+                    rules:
+                            - proto: tcp
+                              from_port: 22
+                              to_port: 22
+                              cidr_ip: 0.0.0.0/0
+                            - proto: tcp
+                              from_port: 80
+                              to_port: 80
+                              cidr_ip: 0.0.0.0/0
+                            - proto: tcp
+                              from_port: "{{ myport }}"
+                              to_port: "{{ myport }}"
+                              cidr_ip: 0.0.0.0/0
+                            - proto: icmp
+                              from_port: -1
+                              to_port: -1
+                              cidr_ip: 0.0.0.0/0
+                    rules_egress:
+                            - proto: all
+                              cidr_ip: 0.0.0.0/0
+          
+          - name: launching ec2 instance
+            loop: "{{ subnet }}"
+            ec2:
+                    key_name: "{{ key }}"
+                    instance_type: "{{ type }}"
+                    image: ami-0ebc1ac48dfd14136
+                    wait: true
+                    group: "{{ sg }}"
+                    count: "{{ number }}"
+                    vpc_subnet_id: "{{ item }}"
+                    assign_public_ip: yes
+                    region: "{{ region }}"
+                    state: present
+                    aws_access_key: "{{ access_key }}"
+                    aws_secret_key: "{{ secret_key }}"
+                    instance_tags:
+                            Name: webserver
+            register: ec2
+            # ignore_errors: yes
+
+          - set_fact:
+                  id: "{{ id + item['instance_ids'] }}"
+            with_items:
+                    - "{{ ec2.results }}"
+          
+          - debug:
+                  msg: "{{ id }}"
+
+          - set_fact:
+                  ip: "{{ ip + item['instances'] }}"
+            with_items:
+                    - "{{ ec2.results }}"
+      
+          - debug:
+                  msg: "{{ item.public_ip }}"
+            with_items: "{{ ip }}"
+
+          - name: Add new instance to host group
+            add_host: 
+                    hostname: "{{ item.public_ip }}"
+                    groupname: webserver
+            loop: "{{ ip }}"
+
+          - name: Wait for SSH to come up
+            wait_for: 
+                    host: "{{ item.public_dns_name }}" 
+                    port: 22  
+                    state: started
+            loop: "{{ ip }}"
+
+- hosts: webserver
+  gather_facts: no
+  tasks:
+          - command: curl http://ipv4.icanhazip.com
+            register: x
+          - debug:
+                  var:  x.stdout
+        
+          - name: Pass variables to role
+            include_role:
+                    name: httpdserver
+            vars:
+                    my_ip: x.stdout
+
+- hosts: localhost
+  gather_facts: no
+  vars_files:
+          - mycred.yml
+
+  vars:
+          region: ap-south-1
+          sg: websg
+          myport: 81
+
+  tasks:
+          - name: create Load Balancer AWS
+            ec2_elb_lb:
+                    name: ec2-lb
+                    state: present
+                    aws_access_key: "{{ access_key }}"
+                    aws_secret_key: "{{ secret_key }}"
+                    region: "{{ region }}"
+                    cross_az_load_balancing: yes
+                    zones:
+                            - "{{ region }}a"
+                            - "{{ region }}b"
+                            - "{{ region }}c"
+                    scheme: internet-facing 
+                    security_group_names: "{{ sg }}"
+                    listeners:
+                            - protocol: http
+                              load_balancer_port: 80
+                              instance_port: "{{ myport }}"
+                    health_check:
+                            ping_protocol: http
+                            ping_port: "{{ myport }}"
+                            ping_path: "/index.php"
+                            response_timeout: 5 
+                            interval: 30
+                            unhealthy_threshold: 2
+                            healthy_threshold: 10
+
+          - name: add webservers to AWS ELB
+            local_action: ec2_elb
+            args:
+                    aws_access_key: "{{ access_key }}"
+                    aws_secret_key: "{{ secret_key }}"
+                    instance_id: "{{ item }}"
+                    ec2_elbs: ec2-lb
+                    state: present
+                    region: "{{ region }}"
+            loop: "{{ id }}"
