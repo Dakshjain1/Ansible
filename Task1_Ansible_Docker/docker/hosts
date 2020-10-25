@@ -1,0 +1,4 @@
+[redhat]
+192.168.56.101 ansible_ssh_user=root ansible_ssh_pass=redhat
+[kali]
+192.168.56.102 ansible_python_interpreter=/usr/bin/python3 ansible_ssh_user=root ansible_ssh_pass=toor

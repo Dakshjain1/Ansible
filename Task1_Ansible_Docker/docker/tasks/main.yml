@@ -1,0 +1,44 @@
+---
+# tasks file for docker
+
+- include_tasks: Redhat-docker.yml
+  when: ansible_os_family == 'RedHat'
+
+- include_tasks: Debian-docker.yml
+  when: ansible_os_family == 'Debian'
+
+- name: Create a directory if it does not exist
+  file:
+          path: /root/web/
+          state: directory
+
+- name: copying the code
+  copy:
+          src: /var/www/html/
+          dest: /root/web/
+
+- name: Docker service
+  service:
+          name: docker
+          state: started
+          enabled: yes
+
+- name: pull httpd image
+  docker_image:
+          name: httpd
+          tag: latest
+          source: pull
+
+- name: run http container
+  docker_container:
+          name: web_container
+          image: httpd:latest
+          detach: yes
+          tty: yes
+          interactive: yes
+          published_ports:
+                  - 80:80
+          volumes:
+                  - /root/web/:/usr/local/apache2/htdocs/
+
+

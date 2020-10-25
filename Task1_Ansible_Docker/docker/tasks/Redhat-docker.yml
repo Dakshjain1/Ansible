@@ -1,0 +1,35 @@
+- name: add docker gpg key
+  rpm_key:
+          key: https://download.docker.com/linux/centos/gpg
+          state: present
+
+- name: Docker Yum Setup
+  yum_repository:
+          name: docker-repo
+          baseurl: https://download.docker.com/linux/centos/7/x86_64/stable/
+          description: Docker yum repo setup
+          gpgcheck: yes
+
+- name: Python 3 install
+  package:
+          name: python36
+
+- name: Docker Module for Python
+  pip:
+          name: docker-py
+
+- name: Install containerd.io
+  package:
+          name:  containerd.io.x86_64
+          state: present
+
+- name: Install docker
+  package:
+          name:  docker-ce-18.09.1
+          state: present
+
+
+
+
+
+

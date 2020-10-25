@@ -1,0 +1,28 @@
+- name: Add Docker apt key
+  apt_key:
+          url: "https://download.docker.com/linux/debian/gpg"
+          state: present
+
+- name: Add Docker repository
+  apt_repository:
+          repo: "deb [arch=amd64] https://download.docker.com/linux/debian buster stable"
+          state: present
+          update_cache: yes
+
+- name: Docker Module for Python
+  pip:
+          name: docker-py
+
+- name: ensure old version are not there
+  package:
+          name:
+                  - docker-engine
+                  - docker.io
+                  - docker
+          state: absent
+
+- name: Install docker
+  package:
+          name: "docker-ce"
+          state: present
+
