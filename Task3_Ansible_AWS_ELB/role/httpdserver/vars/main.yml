@@ -1,0 +1,4 @@
+---
+# vars file for httpdserver
+my_port: 81
+my_path: /var/www/html/
